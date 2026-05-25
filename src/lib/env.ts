@@ -9,10 +9,17 @@
 
 function required(name: string): string {
   const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+  if (value) return value;
+
+  // `next build` collects page data by initializing every route module, which
+  // pulls in the db client + AuthJS handlers even though the routes are never
+  // invoked. Allow placeholders during the build phase so CI can produce an
+  // artifact without prod secrets; real requests still fail loudly.
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return `placeholder://${name.toLowerCase()}`;
   }
-  return value;
+
+  throw new Error(`Missing required environment variable: ${name}`);
 }
 
 function optional(name: string): string | undefined {
