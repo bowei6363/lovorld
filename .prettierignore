@@ -1,0 +1,11 @@
+.next
+out
+build
+dist
+node_modules
+coverage
+package-lock.json
+*.lock
+.vercel
+.turbo
+public
