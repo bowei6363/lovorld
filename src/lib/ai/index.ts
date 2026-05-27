@@ -1,12 +1,13 @@
+import { deepseekVoyageProvider } from "./deepseek-voyage";
+import type { ImageFeatureProvider } from "./provider";
+
 export type { ImageFeature, ImageFeatureProvider, ImageInput, VisualDescription } from "./provider";
 
 /**
- * Concrete providers will live alongside this file (e.g. deepseek-voyage.ts)
- * and be selected here based on env vars in the next milestone.
+ * Returns the active image-feature provider. Today this is hard-wired to the
+ * DeepSeek + text-embedding pipeline; once a native image-embedding service
+ * is available, swap the body here without touching call sites.
  */
-export function getImageFeatureProvider(): never {
-  throw new Error(
-    "ImageFeatureProvider implementation is not wired yet. " +
-      "Implement deepseek-voyage.ts in milestone 4 (AI feature extraction).",
-  );
+export function getImageFeatureProvider(): ImageFeatureProvider {
+  return deepseekVoyageProvider;
 }

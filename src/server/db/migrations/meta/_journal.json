@@ -15,6 +15,13 @@
       "when": 1779864353162,
       "tag": "0001_overrated_doctor_strange",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779865328000,
+      "tag": "0002_harsh_arclight",
+      "breakpoints": true
     }
   ]
 }

@@ -59,6 +59,10 @@ export const posts = pgTable(
     uniqueIndex("post_r2Key_unique").on(table.r2Key),
     index("post_userId_createdAt_idx").on(table.userId, table.createdAt.desc()),
     index("post_status_idx").on(table.status),
+    // HNSW index for cosine similarity search on ready posts. pgvector
+    // tolerates building the index before any rows exist; queries against
+    // the column simply fall back to seq-scan when the index is small.
+    index("post_embedding_hnsw_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
   ],
 );
 

@@ -3,11 +3,13 @@
 import { randomUUID } from "node:crypto";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
 
 import { verifySession } from "@/server/auth/dal";
 import { db } from "@/server/db/client";
 import { posts } from "@/server/db/schema/posts";
+import { analyzePost } from "@/server/posts/analyze";
 import {
   UploadValidationError,
   assertUploadableImage,
@@ -113,6 +115,13 @@ export async function finalizePost(
     height: parsed.height,
     caption: parsed.caption,
     status: "pending_analysis",
+  });
+
+  // Kick the AI pipeline off after the response is flushed so the user
+  // doesn't wait on DeepSeek + embedding round-trips. analyzePost is
+  // crash-tolerant and updates status itself.
+  after(async () => {
+    await analyzePost(parsed.postId);
   });
 
   return { postId: parsed.postId };

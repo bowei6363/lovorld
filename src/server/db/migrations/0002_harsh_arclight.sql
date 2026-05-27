@@ -1,0 +1,1 @@
+CREATE INDEX "post_embedding_hnsw_idx" ON "post" USING hnsw ("embedding" vector_cosine_ops);
