@@ -1,76 +1,90 @@
-import { desc, eq } from "drizzle-orm";
+import Link from "next/link";
 
 import { verifySession } from "@/server/auth/dal";
-import { db } from "@/server/db/client";
-import { posts } from "@/server/db/schema/posts";
-import { publicUrlFor } from "@/server/storage/r2";
+import { getRecommendationFeed } from "@/server/feed/queries";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Milestone 5 will replace this with the similarity-based feed. For now we
-// show the signed-in user's own recent uploads as a smoke test of the upload
-// pipeline.
+export const dynamic = "force-dynamic";
+
+function initialsOf(name: string | null, fallback: string) {
+  return (name ?? fallback)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export default async function FeedPage() {
   const { userId } = await verifySession();
-
-  const rows = await db
-    .select({
-      id: posts.id,
-      r2Key: posts.r2Key,
-      caption: posts.caption,
-      status: posts.status,
-      width: posts.width,
-      height: posts.height,
-      createdAt: posts.createdAt,
-    })
-    .from(posts)
-    .where(eq(posts.userId, userId))
-    .orderBy(desc(posts.createdAt))
-    .limit(50);
+  const { items } = await getRecommendationFeed(userId);
 
   return (
     <section className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
       <header className="mb-8 space-y-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Your uploads</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Your feed</h1>
         <p className="text-muted-foreground">
-          The similarity-driven feed lands in a later milestone. For now, here are the images
-          you&apos;ve shared.
+          People whose taste rhymes with yours. The more you share, the sharper the matches.
         </p>
       </header>
 
-      {rows.length === 0 ? (
+      {items.length === 0 ? (
         <Card>
           <CardContent className="text-muted-foreground py-12 text-center text-sm">
-            Nothing yet. Share something you love to get started.
+            <p>No matches yet — be the first to share something.</p>
+            <Link
+              href="/upload"
+              className="text-foreground mt-3 inline-block underline underline-offset-4"
+            >
+              Upload an image
+            </Link>
           </CardContent>
         </Card>
       ) : (
         <ul className="grid gap-6 sm:grid-cols-2">
-          {rows.map((post) => (
-            <li key={post.id}>
+          {items.map((item) => (
+            <li key={item.id}>
               <Card className="overflow-hidden">
-                <div className="bg-muted relative aspect-[4/3]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={publicUrlFor(post.r2Key)}
-                    alt={post.caption ?? "Uploaded image"}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <CardContent className="space-y-1 py-4">
-                  <p className="text-sm">
-                    {post.caption ?? (
-                      <span className="text-muted-foreground italic">No caption</span>
-                    )}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    {post.status === "pending_analysis"
-                      ? "AI analysis in progress…"
-                      : post.status === "ready"
-                        ? "Analyzed"
-                        : "Analysis failed"}
-                    {" · "}
-                    {post.createdAt.toLocaleString()}
-                  </p>
+                <Link href={`/p/${item.id}`} className="block">
+                  <div className="bg-muted relative aspect-[4/3]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.imageUrl}
+                      alt={item.caption ?? item.description ?? "Image"}
+                      className="h-full w-full object-cover transition group-hover:scale-[1.01]"
+                    />
+                  </div>
+                </Link>
+                <CardContent className="space-y-3 py-4">
+                  <Link
+                    href={`/u/${item.author.id}`}
+                    className="flex items-center gap-2 hover:opacity-80"
+                  >
+                    <Avatar className="size-7">
+                      {item.author.image ? (
+                        <AvatarImage src={item.author.image} alt={item.author.name ?? "Avatar"} />
+                      ) : null}
+                      <AvatarFallback className="text-[10px]">
+                        {initialsOf(item.author.name, item.author.id)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium">
+                      {item.author.handle
+                        ? `@${item.author.handle}`
+                        : (item.author.name ?? "Someone")}
+                    </span>
+                  </Link>
+                  {item.caption ? <p className="text-sm">{item.caption}</p> : null}
+                  {item.similarity !== null ? (
+                    <p className="text-muted-foreground text-xs">
+                      {Math.round(item.similarity * 100)}% taste match
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      {item.createdAt.toLocaleDateString()}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </li>

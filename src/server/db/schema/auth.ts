@@ -7,7 +7,15 @@
  * close to the identity. Feed/social tables will live in separate schema files.
  */
 import { sql } from "drizzle-orm";
-import { integer, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  vector,
+} from "drizzle-orm/pg-core";
 
 export const users = pgTable(
   "user",
@@ -23,6 +31,13 @@ export const users = pgTable(
     // Lovorld profile extensions
     handle: text("handle"),
     bio: text("bio"),
+
+    // Aggregate "taste vector" — the average embedding of this user's
+    // ready posts. Recomputed by analyzePost when each new post finishes
+    // analysis. Drives the similarity feed in milestone 5.
+    tasteEmbedding: vector("tasteEmbedding", { dimensions: 1024 }),
+    tasteUpdatedAt: timestamp("tasteUpdatedAt", { mode: "date" }),
+
     createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
   },

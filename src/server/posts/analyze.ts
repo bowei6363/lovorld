@@ -11,10 +11,11 @@
  */
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { getImageFeatureProvider } from "@/lib/ai";
 import { db } from "@/server/db/client";
+import { users } from "@/server/db/schema/auth";
 import { posts } from "@/server/db/schema/posts";
 import { publicUrlFor } from "@/server/storage/r2";
 
@@ -47,6 +48,15 @@ export async function analyzePost(postId: string): Promise<void> {
         updatedAt: new Date(),
       })
       .where(eq(posts.id, postId));
+
+    // Refresh the uploader's taste vector now that they have a new ready
+    // post. Cheap to do inline because the AVG is over a single user's
+    // posts and the failure case is "stale taste vector", not a crash.
+    try {
+      await recomputeUserTaste(post.userId);
+    } catch (recomputeErr) {
+      console.error(`analyzePost: taste recompute failed for user ${post.userId}`, recomputeErr);
+    }
   } catch (err) {
     console.error(`analyzePost: failed for post ${postId}`, err);
     await db
@@ -71,4 +81,25 @@ export async function analyzePendingPosts(limit = 20): Promise<number> {
     await analyzePost(row.id);
   }
   return pending.length;
+}
+
+/**
+ * Recompute a user's taste vector as the average of their ready posts'
+ * embeddings. pgvector ≥0.5 supports `AVG(vector)`, returning a vector of
+ * the same dimensionality. NULL is written back if the user has no ready
+ * posts (the feed treats NULL taste as "cold start").
+ */
+export async function recomputeUserTaste(userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({
+      tasteEmbedding: sql`(
+        SELECT AVG(${posts.embedding})
+        FROM ${posts}
+        WHERE ${and(eq(posts.userId, userId), eq(posts.status, "ready"), isNotNull(posts.embedding))}
+      )`,
+      tasteUpdatedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
 }
