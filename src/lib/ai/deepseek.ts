@@ -18,16 +18,16 @@ import { env } from "@/lib/env";
 import type { ImageInput, VisualDescription } from "./provider";
 
 const SYSTEM_PROMPT =
-  "You are an art-attuned image analyst. For any image you produce a compact JSON description capturing its visual essence — what an art curator would say. You always reply with a single JSON object and no commentary.";
+  "你是一位懂艺术的图像分析师。对任何图片，你都会输出一个紧凑的 JSON，捕捉这张图的视觉本质——像策展人那样精准描述。你的回复永远是单个 JSON 对象，不带任何额外说明。";
 
-const USER_PROMPT = `Analyze this image and reply with this exact JSON shape:
+const USER_PROMPT = `分析这张图片，严格按以下 JSON 结构回复（所有文字必须用简体中文）：
 {
-  "summary": "<one paragraph (40-80 words) describing subject, style, composition, color, and mood>",
-  "tags": ["<5-12 short tags covering subject / style / palette / mood / era>"],
+  "summary": "<一段（约 40-80 个汉字）描述：主体、风格、构图、色彩、情绪>",
+  "tags": ["<5-12 个简短标签，覆盖主体/风格/调色/情绪/时代等维度，简体中文>"],
   "palette": ["#xxxxxx"]
 }
-The palette must contain 3-5 dominant colors as 6-digit hex, ordered by prevalence.
-Reply with ONLY the JSON object — no markdown fences, no commentary.`;
+palette 必须是 3-5 个主导色，6 位十六进制格式，按占比从高到低排序。
+只回复这一个 JSON 对象——不要 markdown 围栏，不要额外说明。`;
 
 type ChatContentItem =
   | { type: "text"; text: string }

@@ -13,26 +13,26 @@ export default async function HomePage() {
           lovorld
         </p>
         <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-          Share an image you love. Find people who love it too.
+          分享你喜爱的图片，遇见和你审美相通的人。
         </h1>
         <p className="text-muted-foreground text-lg text-balance">
-          Every image you upload is analyzed by AI for its visual essence — style, palette, mood —
-          and matched against everyone else&apos;s taste. Social, by what you find beautiful.
+          你上传的每张图片都会被 AI
+          读懂它的视觉特质——风格、调色、情绪——再去和大家的品味做匹配。社交，从你眼中的「美」开始。
         </p>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">
         {me ? (
           <Button render={<Link href="/feed" />} size="lg">
-            Open your feed
+            打开我的信息流
           </Button>
         ) : (
           <Button render={<Link href="/sign-in" />} size="lg">
-            Get started
+            立即体验
           </Button>
         )}
         <Button render={<Link href={me ? "/profile" : "/"} />} size="lg" variant="outline">
-          {me ? "My profile" : "Learn more"}
+          {me ? "我的主页" : "了解更多"}
         </Button>
       </div>
     </section>

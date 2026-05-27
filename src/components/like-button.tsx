@@ -29,7 +29,7 @@ export function LikeButton({ postId, initialLiked, initialCount }: Props) {
       try {
         await toggleLike({ postId });
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Could not like.");
+        toast.error(err instanceof Error ? err.message : "点赞失败。");
       }
     });
   }
@@ -43,7 +43,7 @@ export function LikeButton({ postId, initialLiked, initialCount }: Props) {
       disabled={pending}
       aria-pressed={state.liked}
     >
-      {state.liked ? "Liked" : "Like"} · {state.count}
+      {state.liked ? "已赞" : "点赞"} · {state.count}
     </Button>
   );
 }

@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "lovorld — connect through what you love",
-  description: "Share an image you love. We match you with people whose taste rhymes with yours.",
+  title: "lovorld —— 用喜爱的画面遇见同频的人",
+  description: "分享一张你喜爱的图片，AI 读懂它的视觉特质，把你和审美相通的人连在一起。",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="zh-CN" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="bg-background text-foreground flex min-h-full flex-col">
         <SiteHeader />
         <main className="flex flex-1 flex-col">{children}</main>

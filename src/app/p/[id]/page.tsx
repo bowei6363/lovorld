@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { tryGetCurrentUser } from "@/server/auth/dal";
-import { getPostById } from "@/server/feed/queries";
-import { getPostSocialState } from "@/server/social/queries";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent } from "@/components/ui/card";
 import { CommentBox } from "@/components/comment-box";
 import { CommentList } from "@/components/comment-list";
 import { LikeButton } from "@/components/like-button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card, CardContent } from "@/components/ui/card";
+import { tryGetCurrentUser } from "@/server/auth/dal";
+import { getPostById } from "@/server/feed/queries";
+import { getPostSocialState } from "@/server/social/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -26,10 +26,10 @@ function initialsOf(name: string | null, fallback: string) {
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
   const post = await getPostById(id);
-  if (!post) return { title: "Not found" };
+  if (!post) return { title: "找不到内容" };
   const title = post.caption
     ? `${post.caption.slice(0, 60)} — lovorld`
-    : `${post.author.name ?? "Image"} on lovorld`;
+    : `${post.author.name ?? "图片"} · lovorld`;
   return {
     title,
     description: post.description?.slice(0, 200) ?? undefined,
@@ -61,7 +61,7 @@ export default async function PostPage({ params }: Props) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={post.imageUrl}
-            alt={post.caption ?? post.description ?? "Image"}
+            alt={post.caption ?? post.description ?? "图片"}
             className="h-auto w-full object-contain"
           />
         </div>
@@ -73,12 +73,12 @@ export default async function PostPage({ params }: Props) {
             >
               <Avatar className="size-10">
                 {post.author.image ? (
-                  <AvatarImage src={post.author.image} alt={post.author.name ?? "Avatar"} />
+                  <AvatarImage src={post.author.image} alt={post.author.name ?? "头像"} />
                 ) : null}
                 <AvatarFallback>{initialsOf(post.author.name, post.author.id)}</AvatarFallback>
               </Avatar>
               <div className="flex flex-col">
-                <span className="text-sm font-medium">{post.author.name ?? "Anonymous"}</span>
+                <span className="text-sm font-medium">{post.author.name ?? "未命名用户"}</span>
                 {post.author.handle ? (
                   <span className="text-muted-foreground text-xs">@{post.author.handle}</span>
                 ) : null}
@@ -93,7 +93,7 @@ export default async function PostPage({ params }: Props) {
               />
             ) : (
               <Link href="/sign-in" className="text-muted-foreground text-sm hover:underline">
-                Sign in to like
+                登录后点赞
               </Link>
             )}
           </div>
@@ -103,20 +103,22 @@ export default async function PostPage({ params }: Props) {
           {post.description ? (
             <div className="bg-muted/30 space-y-2 rounded-lg border p-4">
               <p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">
-                What AI sees
+                AI 读到的画面
               </p>
               <p className="text-sm leading-relaxed">{post.description}</p>
             </div>
           ) : post.status === "pending_analysis" ? (
-            <p className="text-muted-foreground text-sm">Visual analysis is in progress.</p>
+            <p className="text-muted-foreground text-sm">AI 正在分析画面…</p>
+          ) : post.status === "failed" ? (
+            <p className="text-destructive text-sm">AI 分析失败。</p>
           ) : null}
 
-          <p className="text-muted-foreground text-xs">{post.createdAt.toLocaleString()}</p>
+          <p className="text-muted-foreground text-xs">{post.createdAt.toLocaleString("zh-CN")}</p>
         </CardContent>
       </Card>
 
       <section className="mt-8 space-y-4">
-        <h2 className="text-lg font-semibold tracking-tight">Comments</h2>
+        <h2 className="text-lg font-semibold tracking-tight">评论</h2>
         {me ? <CommentBox postId={post.id} /> : null}
         <CommentList postId={post.id} />
       </section>

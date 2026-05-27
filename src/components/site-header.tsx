@@ -1,10 +1,10 @@
 import Link from "next/link";
 
+import { Button } from "@/components/ui/button";
+import { UserMenu } from "@/components/user-menu";
 import { tryGetCurrentUser } from "@/server/auth/dal";
 import { toPublicProfile } from "@/server/auth/dto";
 import { countUnreadNotifications } from "@/server/social/queries";
-import { UserMenu } from "@/components/user-menu";
-import { Button } from "@/components/ui/button";
 
 export async function SiteHeader() {
   const me = await tryGetCurrentUser();
@@ -21,10 +21,10 @@ export async function SiteHeader() {
           {me ? (
             <>
               <Button render={<Link href="/feed" />} variant="ghost" size="sm">
-                Feed
+                信息流
               </Button>
               <Button render={<Link href="/upload" />} variant="ghost" size="sm">
-                Upload
+                上传
               </Button>
               <Button
                 render={<Link href="/notifications" />}
@@ -32,7 +32,7 @@ export async function SiteHeader() {
                 size="sm"
                 className="relative"
               >
-                Notifications
+                通知
                 {unread > 0 ? (
                   <span className="bg-primary text-primary-foreground ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] leading-none font-semibold">
                     {unread > 99 ? "99+" : unread}
@@ -43,7 +43,7 @@ export async function SiteHeader() {
             </>
           ) : (
             <Button render={<Link href="/sign-in" />} size="sm">
-              Sign in
+              登录
             </Button>
           )}
         </nav>

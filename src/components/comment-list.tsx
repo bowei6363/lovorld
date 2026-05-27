@@ -15,7 +15,7 @@ function initialsOf(name: string | null, fallback: string) {
 export async function CommentList({ postId }: { postId: string }) {
   const items = await getCommentsForPost(postId);
   if (items.length === 0) {
-    return <p className="text-muted-foreground text-sm">Be the first to say something.</p>;
+    return <p className="text-muted-foreground text-sm">还没有评论，来说第一句吧。</p>;
   }
 
   return (
@@ -25,7 +25,7 @@ export async function CommentList({ postId }: { postId: string }) {
           <Link href={`/u/${c.authorId}`} className="shrink-0">
             <Avatar className="size-8">
               {c.authorImage ? (
-                <AvatarImage src={c.authorImage} alt={c.authorName ?? "Avatar"} />
+                <AvatarImage src={c.authorImage} alt={c.authorName ?? "头像"} />
               ) : null}
               <AvatarFallback className="text-[10px]">
                 {initialsOf(c.authorName, c.authorId)}
@@ -35,9 +35,11 @@ export async function CommentList({ postId }: { postId: string }) {
           <div className="flex-1 space-y-1">
             <div className="flex items-baseline gap-2 text-sm">
               <Link href={`/u/${c.authorId}`} className="font-medium hover:underline">
-                {c.authorHandle ? `@${c.authorHandle}` : (c.authorName ?? "Anonymous")}
+                {c.authorHandle ? `@${c.authorHandle}` : (c.authorName ?? "未命名用户")}
               </Link>
-              <span className="text-muted-foreground text-xs">{c.createdAt.toLocaleString()}</span>
+              <span className="text-muted-foreground text-xs">
+                {c.createdAt.toLocaleString("zh-CN")}
+              </span>
             </div>
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{c.body}</p>
           </div>

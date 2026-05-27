@@ -26,7 +26,7 @@ async function readImageDimensions(file: File): Promise<{ width: number; height:
       img.onload = () => {
         resolve({ width: img.naturalWidth, height: img.naturalHeight });
       };
-      img.onerror = () => reject(new Error("Could not read image dimensions."));
+      img.onerror = () => reject(new Error("无法读取图片尺寸。"));
       img.src = url;
     });
   } finally {
@@ -58,11 +58,11 @@ export function UploadForm() {
     }
 
     if (!picked.type.startsWith("image/")) {
-      toast.error("That doesn't look like an image.");
+      toast.error("这不是图片文件。");
       return;
     }
     if (picked.size > MAX_BYTES) {
-      toast.error(`Too large — ${formatBytes(picked.size)}. Max ${formatBytes(MAX_BYTES)}.`);
+      toast.error(`图片太大 —— ${formatBytes(picked.size)}，上限 ${formatBytes(MAX_BYTES)}。`);
       return;
     }
 
@@ -89,12 +89,12 @@ export function UploadForm() {
           body: file,
         });
         if (!putRes.ok) {
-          throw new Error(`Upload to storage failed (${putRes.status} ${putRes.statusText}).`);
+          throw new Error(`上传到云端失败（${putRes.status} ${putRes.statusText}）。`);
         }
 
         const dims = await dimsPromise;
 
-        await finalizePost({
+        const { postId } = await finalizePost({
           postId: intent.postId,
           r2Key: intent.r2Key,
           mimeType: file.type,
@@ -104,10 +104,13 @@ export function UploadForm() {
           caption: caption.trim() || undefined,
         });
 
-        toast.success("Shared! Analysis is running in the background.");
-        router.push("/feed");
+        toast.success("已发布！AI 正在后台分析…");
+        // Take the user straight to the detail page so they immediately see
+        // the image + the AI description as soon as analysis lands. The feed
+        // hides own posts on purpose, so jumping there would feel empty.
+        router.push(`/p/${postId}`);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(err instanceof Error ? err.message : "上传失败。");
       }
     });
   }
@@ -135,14 +138,14 @@ export function UploadForm() {
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={previewUrl}
-                alt="Selected upload preview"
+                alt="待上传的图片预览"
                 className="h-full w-full object-contain"
               />
             ) : (
               <div className="text-muted-foreground space-y-1 text-center text-sm">
-                <p className="font-medium">Click to choose an image</p>
+                <p className="font-medium">点击选择图片</p>
                 <p className="text-xs">
-                  JPG, PNG, WebP, AVIF, or GIF — up to {formatBytes(MAX_BYTES)}.
+                  支持 JPG、PNG、WebP、AVIF、GIF —— 最大 {formatBytes(MAX_BYTES)}。
                 </p>
               </div>
             )}
@@ -158,13 +161,13 @@ export function UploadForm() {
 
       <div className="space-y-2">
         <label htmlFor="caption" className="text-sm font-medium">
-          Caption (optional)
+          说点什么（可选）
         </label>
         <Input
           id="caption"
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
-          placeholder="A word about why you love it…"
+          placeholder="你为什么喜欢这张图…"
           maxLength={500}
           disabled={pending}
         />
@@ -181,10 +184,10 @@ export function UploadForm() {
           }}
           disabled={pending || !file}
         >
-          Reset
+          重置
         </Button>
         <Button type="submit" disabled={pending || !file}>
-          {pending ? "Sharing…" : "Share"}
+          {pending ? "发布中…" : "发布"}
         </Button>
       </div>
     </form>

@@ -21,7 +21,7 @@ export function CommentBox({ postId }: { postId: string }) {
         await addComment({ postId, body: text });
         setBody("");
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Could not post.");
+        toast.error(err instanceof Error ? err.message : "评论发送失败。");
       }
     });
   }
@@ -29,14 +29,14 @@ export function CommentBox({ postId }: { postId: string }) {
   return (
     <form onSubmit={onSubmit} className="flex items-center gap-2">
       <Input
-        placeholder="Add a comment…"
+        placeholder="说点什么…"
         value={body}
         onChange={(e) => setBody(e.target.value)}
         disabled={pending}
         maxLength={2000}
       />
       <Button type="submit" size="sm" disabled={pending || !body.trim()}>
-        {pending ? "Posting…" : "Post"}
+        {pending ? "发送中…" : "发送"}
       </Button>
     </form>
   );
