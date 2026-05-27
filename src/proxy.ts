@@ -10,7 +10,7 @@ import authConfig from "./auth.config";
 
 const { auth: proxy } = NextAuth(authConfig);
 
-const PROTECTED_PREFIXES = ["/profile", "/upload", "/feed"];
+const PROTECTED_PREFIXES = ["/profile", "/upload", "/feed", "/notifications"];
 
 export default proxy((req) => {
   const path = req.nextUrl.pathname;

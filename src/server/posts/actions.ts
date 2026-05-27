@@ -9,6 +9,7 @@ import { z } from "zod";
 import { verifySession } from "@/server/auth/dal";
 import { db } from "@/server/db/client";
 import { posts } from "@/server/db/schema/posts";
+import { USER_UPLOAD_LIMIT, requireRateLimit } from "@/server/limits";
 import { analyzePost } from "@/server/posts/analyze";
 import {
   UploadValidationError,
@@ -49,6 +50,7 @@ export async function createUploadIntent(
   input: z.input<typeof intentSchema>,
 ): Promise<UploadIntent> {
   const { userId } = await verifySession();
+  requireRateLimit(`upload-intent:${userId}`, USER_UPLOAD_LIMIT);
   const parsed = intentSchema.parse(input);
 
   try {
