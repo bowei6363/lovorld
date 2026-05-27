@@ -1,20 +1,24 @@
 /**
- * DeepSeek vision: image -> structured JSON description.
+ * Vision provider: image → structured JSON description.
  *
- * DeepSeek's chat/completions API is OpenAI-compatible, so the request shape
- * matches GPT-4V calls. We force JSON via `response_format` and parse client
- * side — the model occasionally wraps JSON in markdown despite instructions,
- * so we strip code fences defensively before parsing.
+ * Speaks OpenAI's chat/completions wire format. The active provider is
+ * controlled by VISION_BASE_URL / VISION_API_KEY / VISION_MODEL — defaults
+ * point at Alibaba DashScope (qwen-vl-max), but anything that accepts the
+ * same shape works. File is named `deepseek.ts` for historical reasons;
+ * it has nothing DeepSeek-specific in it any more.
+ *
+ * Some providers refuse `response_format: json_object` (DashScope did,
+ * historically). We fall back to extracting JSON from the raw text reply
+ * with markdown-fence stripping rather than depending on the structured
+ * output mode.
  */
 import "server-only";
 
 import { env } from "@/lib/env";
 import type { ImageInput, VisualDescription } from "./provider";
 
-const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
-
 const SYSTEM_PROMPT =
-  "You are an art-attuned image analyst. For any image, you produce a compact JSON description capturing its visual essence — what an art curator would say. You always reply with a single JSON object.";
+  "You are an art-attuned image analyst. For any image you produce a compact JSON description capturing its visual essence — what an art curator would say. You always reply with a single JSON object and no commentary.";
 
 const USER_PROMPT = `Analyze this image and reply with this exact JSON shape:
 {
@@ -23,7 +27,7 @@ const USER_PROMPT = `Analyze this image and reply with this exact JSON shape:
   "palette": ["#xxxxxx"]
 }
 The palette must contain 3-5 dominant colors as 6-digit hex, ordered by prevalence.
-Reply with ONLY the JSON object — no markdown, no commentary.`;
+Reply with ONLY the JSON object — no markdown fences, no commentary.`;
 
 type ChatContentItem =
   | { type: "text"; text: string }
@@ -54,10 +58,11 @@ function isHex(s: unknown): s is string {
 export type RawVisualDescription = VisualDescription & { rawModel: string };
 
 export async function describeImage(input: ImageInput): Promise<RawVisualDescription> {
-  const apiKey = env.ai.deepseek.apiKey();
-  const model = env.ai.deepseek.visionModel();
+  const baseUrl = env.ai.vision.baseUrl();
+  const apiKey = env.ai.vision.apiKey();
+  const model = env.ai.vision.model();
 
-  const res = await fetch(DEEPSEEK_ENDPOINT, {
+  const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -72,7 +77,6 @@ export async function describeImage(input: ImageInput): Promise<RawVisualDescrip
           content: [imageToContentItem(input), { type: "text", text: USER_PROMPT }],
         },
       ],
-      response_format: { type: "json_object" },
       temperature: 0.4,
       max_tokens: 600,
     }),
@@ -81,7 +85,7 @@ export async function describeImage(input: ImageInput): Promise<RawVisualDescrip
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `DeepSeek vision failed (${res.status} ${res.statusText}): ${body.slice(0, 500)}`,
+      `Vision provider failed (${res.status} ${res.statusText}): ${body.slice(0, 500)}`,
     );
   }
 
@@ -90,16 +94,29 @@ export async function describeImage(input: ImageInput): Promise<RawVisualDescrip
   };
   const content = json.choices?.[0]?.message?.content;
   if (!content) {
-    throw new Error("DeepSeek returned no content.");
+    throw new Error("Vision provider returned no content.");
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(stripJsonFences(content));
   } catch (err) {
-    throw new Error(
-      `DeepSeek returned non-JSON: ${content.slice(0, 200)} (${(err as Error).message})`,
-    );
+    // Some providers wrap the JSON in prose. Try to recover the first
+    // {...} block before giving up.
+    const match = content.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        throw new Error(
+          `Vision provider returned non-JSON: ${content.slice(0, 200)} (${(err as Error).message})`,
+        );
+      }
+    } else {
+      throw new Error(
+        `Vision provider returned non-JSON: ${content.slice(0, 200)} (${(err as Error).message})`,
+      );
+    }
   }
 
   const obj = parsed as Record<string, unknown>;
@@ -110,7 +127,7 @@ export async function describeImage(input: ImageInput): Promise<RawVisualDescrip
   const palette = Array.isArray(obj.palette) ? obj.palette.filter(isHex) : undefined;
 
   if (!summary) {
-    throw new Error("DeepSeek description missing 'summary'.");
+    throw new Error("Vision provider response missing 'summary'.");
   }
 
   return { summary, tags, palette, rawModel: model };

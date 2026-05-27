@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 
+import { isDemoMode } from "@/lib/env";
 import { verifySession } from "@/server/auth/dal";
 import { db } from "@/server/db/client";
 import { posts } from "@/server/db/schema/posts";
@@ -49,6 +50,11 @@ export type UploadIntent = {
 export async function createUploadIntent(
   input: z.input<typeof intentSchema>,
 ): Promise<UploadIntent> {
+  if (isDemoMode()) {
+    throw new Error(
+      "Uploads are disabled in demo mode. Sign in with the full env config to try the real upload pipeline.",
+    );
+  }
   const { userId } = await verifySession();
   requireRateLimit(`upload-intent:${userId}`, USER_UPLOAD_LIMIT);
   const parsed = intentSchema.parse(input);

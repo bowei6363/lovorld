@@ -6,6 +6,14 @@ import "server-only";
 
 import { aliasedTable, and, asc, desc, eq, sql } from "drizzle-orm";
 
+import { isDemoMode } from "@/lib/env";
+import {
+  demoComments,
+  demoLikes,
+  demoNotifications,
+  findDemoPost,
+  findDemoUser,
+} from "@/server/demo/fixtures";
 import { db } from "@/server/db/client";
 import { users } from "@/server/db/schema/auth";
 import { posts } from "@/server/db/schema/posts";
@@ -13,6 +21,15 @@ import { comments, likes, notifications } from "@/server/db/schema/social";
 import { publicUrlFor } from "@/server/storage/r2";
 
 export async function getPostSocialState(postId: string, viewerId: string) {
+  if (isDemoMode()) {
+    const l = demoLikes[postId];
+    void viewerId;
+    return {
+      likeCount: l?.count ?? 0,
+      viewerLiked: l?.selfLiked ?? false,
+    };
+  }
+
   const [countRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(likes)
@@ -29,6 +46,24 @@ export async function getPostSocialState(postId: string, viewerId: string) {
 }
 
 export async function getCommentsForPost(postId: string) {
+  if (isDemoMode()) {
+    return demoComments
+      .filter((c) => c.postId === postId)
+      .map((c) => {
+        const author = findDemoUser(c.authorId)!;
+        return {
+          id: c.id,
+          body: c.body,
+          createdAt: c.createdAt,
+          authorId: author.id,
+          authorName: author.name,
+          authorHandle: author.handle,
+          authorImage: author.image,
+        };
+      })
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
   const rows = await db
     .select({
       id: comments.id,
@@ -48,6 +83,11 @@ export async function getCommentsForPost(postId: string) {
 }
 
 export async function countUnreadNotifications(userId: string): Promise<number> {
+  if (isDemoMode()) {
+    void userId;
+    return demoNotifications.filter((n) => n.readAt === null).length;
+  }
+
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(notifications)
@@ -74,6 +114,31 @@ export type NotificationItem = {
 };
 
 export async function getNotifications(userId: string, limit = 50): Promise<NotificationItem[]> {
+  if (isDemoMode()) {
+    void userId;
+    return demoNotifications
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit)
+      .map((n) => {
+        const actor = findDemoUser(n.actorId)!;
+        const post = n.postId ? findDemoPost(n.postId) : null;
+        return {
+          id: n.id,
+          type: n.type,
+          createdAt: n.createdAt,
+          readAt: n.readAt,
+          actor: {
+            id: actor.id,
+            name: actor.name,
+            handle: actor.handle,
+            image: actor.image,
+          },
+          post: post ? { id: post.id, imageUrl: post.imageUrl } : null,
+          commentBody: n.commentBody,
+        };
+      });
+  }
+
   const actor = aliasedTable(users, "actor");
 
   const rows = await db

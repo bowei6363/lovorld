@@ -7,6 +7,37 @@
  * everything else must only be read in server contexts.
  */
 
+/**
+ * Demo mode: when LOVORLD_DEMO_MODE=1, every data-access function returns
+ * static fixtures and writes are no-ops. Lets reviewers click through the
+ * UI without provisioning Postgres / OAuth / R2 / AI keys.
+ */
+export function isDemoMode(): boolean {
+  return process.env.LOVORLD_DEMO_MODE === "1";
+}
+
+/**
+ * Storage backend selection. Auto-detects based on env:
+ *   - "local"        when LOVORLD_LOCAL_STORAGE=1 (dev only)
+ *   - "vercel-blob"  when BLOB_READ_WRITE_TOKEN is set (Vercel auto-injects)
+ *   - "r2"           otherwise (Cloudflare R2 via S3 SDK)
+ */
+export type StorageBackend = "local" | "vercel-blob" | "r2";
+
+export function storageBackend(): StorageBackend {
+  if (process.env.LOVORLD_LOCAL_STORAGE === "1") return "local";
+  if (process.env.BLOB_READ_WRITE_TOKEN) return "vercel-blob";
+  return "r2";
+}
+
+export function isLocalStorage(): boolean {
+  return storageBackend() === "local";
+}
+
+export function isVercelBlob(): boolean {
+  return storageBackend() === "vercel-blob";
+}
+
 function required(name: string): string {
   const value = process.env[name];
   if (value) return value;
@@ -55,17 +86,28 @@ export const env = {
     },
   },
   ai: {
-    deepseek: {
-      apiKey: () => required("DEEPSEEK_API_KEY"),
-      visionModel: () => process.env.DEEPSEEK_VISION_MODEL ?? "deepseek-vl2",
+    // Generic OpenAI-compatible vision provider. Defaults to Alibaba's
+    // DashScope (qwen-vl-max), but any provider that speaks the
+    // chat/completions wire format works — just swap VISION_BASE_URL and
+    // VISION_MODEL: OpenAI, Anthropic-via-proxy, Zhipu, Moonshot, etc.
+    vision: {
+      baseUrl: () =>
+        (
+          process.env.VISION_BASE_URL ?? "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        ).replace(/\/$/, ""),
+      apiKey: () => required("VISION_API_KEY"),
+      model: () => process.env.VISION_MODEL ?? "qwen-vl-max",
     },
-    voyage: {
-      apiKey: () => optional("VOYAGE_API_KEY"),
-      model: () => process.env.VOYAGE_EMBED_MODEL ?? "voyage-3-large",
-    },
-    openai: {
-      apiKey: () => optional("OPENAI_API_KEY"),
-      embedModel: () => process.env.OPENAI_EMBED_MODEL ?? "text-embedding-3-large",
+    // Generic OpenAI-compatible embedding provider. Must produce 1024-d
+    // vectors to match the schema. DashScope text-embedding-v3 supports
+    // `dimensions: 1024`; OpenAI text-embedding-3-large supports the same.
+    embedding: {
+      baseUrl: () =>
+        (
+          process.env.EMBEDDING_BASE_URL ?? "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        ).replace(/\/$/, ""),
+      apiKey: () => required("EMBEDDING_API_KEY"),
+      model: () => process.env.EMBEDDING_MODEL ?? "text-embedding-v3",
     },
   },
   monitoring: {

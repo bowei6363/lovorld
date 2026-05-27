@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Local storage backend (LOVORLD_LOCAL_STORAGE=1)
+/uploads
+
 # vercel
 .vercel
 

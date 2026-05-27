@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 
-import { signIn, auth } from "@/auth";
+import { auth, signIn } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { signInAsGuest } from "@/server/auth/guest";
 
 const ENABLED_PROVIDERS = (
   [
@@ -35,30 +36,47 @@ export default async function SignInPage({ searchParams }: Props) {
           <CardTitle className="text-2xl">Sign in to lovorld</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {ENABLED_PROVIDERS.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              No OAuth providers are configured. Set{" "}
-              <code className="bg-muted rounded px-1">AUTH_GITHUB_ID</code> or{" "}
-              <code className="bg-muted rounded px-1">AUTH_GOOGLE_ID</code> in{" "}
-              <code className="bg-muted rounded px-1">.env.local</code> to enable sign-in.
-            </p>
-          ) : (
-            ENABLED_PROVIDERS.map((provider) => (
-              <form
-                key={provider.id}
-                action={async () => {
-                  "use server";
-                  await signIn(provider.id, {
-                    redirectTo: callbackUrl ?? "/feed",
-                  });
-                }}
-              >
-                <Button type="submit" className="w-full" size="lg">
-                  {provider.label}
-                </Button>
-              </form>
-            ))
-          )}
+          {/* Guest entry first — this is the seed-user fast path. */}
+          <form
+            action={async () => {
+              "use server";
+              await signInAsGuest(callbackUrl);
+            }}
+          >
+            <Button type="submit" className="w-full" size="lg">
+              Quick try — no signup needed
+            </Button>
+          </form>
+          <p className="text-muted-foreground -mt-1 text-center text-xs">
+            Mints a guest account that lasts 30 days. You can keep using it or link it to GitHub
+            later.
+          </p>
+
+          {ENABLED_PROVIDERS.length > 0 ? (
+            <>
+              <div className="my-2 flex items-center gap-3">
+                <div className="bg-border h-px flex-1" />
+                <span className="text-muted-foreground text-xs tracking-widest uppercase">or</span>
+                <div className="bg-border h-px flex-1" />
+              </div>
+
+              {ENABLED_PROVIDERS.map((provider) => (
+                <form
+                  key={provider.id}
+                  action={async () => {
+                    "use server";
+                    await signIn(provider.id, {
+                      redirectTo: callbackUrl ?? "/feed",
+                    });
+                  }}
+                >
+                  <Button type="submit" variant="outline" className="w-full" size="lg">
+                    {provider.label}
+                  </Button>
+                </form>
+              ))}
+            </>
+          ) : null}
 
           {error ? (
             <p className="text-destructive text-sm" role="alert">

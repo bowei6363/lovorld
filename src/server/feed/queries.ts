@@ -13,6 +13,15 @@ import "server-only";
 
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 
+import { isDemoMode } from "@/lib/env";
+import {
+  DEMO_SELF_ID,
+  demoPosts,
+  demoSimilarity,
+  demoUsers,
+  findDemoPost,
+  findDemoUser,
+} from "@/server/demo/fixtures";
 import { db } from "@/server/db/client";
 import { users } from "@/server/db/schema/auth";
 import { posts } from "@/server/db/schema/posts";
@@ -48,6 +57,38 @@ export async function getRecommendationFeed(
   viewerId: string,
   { offset = 0, limit = PAGE_SIZE }: { offset?: number; limit?: number } = {},
 ): Promise<{ items: FeedItem[]; nextOffset: number | null }> {
+  if (isDemoMode()) {
+    const others = demoPosts
+      .filter((p) => p.userId !== viewerId)
+      .map((p) => ({
+        post: p,
+        similarity: demoSimilarity[p.id] ?? 0.5,
+      }))
+      .sort((a, b) => b.similarity - a.similarity);
+    const page = others.slice(offset, offset + limit);
+    const nextOffset = others.length > offset + limit ? offset + limit : null;
+    const items: FeedItem[] = page.map(({ post, similarity }) => {
+      const author = findDemoUser(post.userId)!;
+      return {
+        id: post.id,
+        imageUrl: post.imageUrl,
+        caption: post.caption,
+        description: post.description,
+        width: post.width,
+        height: post.height,
+        createdAt: post.createdAt,
+        similarity,
+        author: {
+          id: author.id,
+          name: author.name,
+          handle: author.handle,
+          image: author.image,
+        },
+      };
+    });
+    return { items, nextOffset };
+  }
+
   const [viewer] = await db
     .select({ tasteEmbedding: users.tasteEmbedding })
     .from(users)
@@ -109,6 +150,11 @@ export async function getRecommendationFeed(
   }
 
   // Cold start: recency feed.
+  // demoUsers reference kept to satisfy the dead-code analyzer when
+  // demo mode is off — it short-circuits above.
+  void demoUsers;
+  void DEMO_SELF_ID;
+
   const rows = await db
     .select({
       id: posts.id,
@@ -154,6 +200,30 @@ export async function getRecommendationFeed(
 }
 
 export async function getPostById(postId: string) {
+  if (isDemoMode()) {
+    const post = findDemoPost(postId);
+    if (!post) return null;
+    const author = findDemoUser(post.userId);
+    if (!author) return null;
+    return {
+      id: post.id,
+      imageUrl: post.imageUrl,
+      caption: post.caption,
+      description: post.description,
+      width: post.width,
+      height: post.height,
+      status: post.status,
+      createdAt: post.createdAt,
+      author: {
+        id: author.id,
+        name: author.name,
+        handle: author.handle,
+        image: author.image,
+        bio: author.bio,
+      },
+    };
+  }
+
   const [row] = await db
     .select({
       id: posts.id,
@@ -197,6 +267,19 @@ export async function getPostById(postId: string) {
 }
 
 export async function getPostsByUser(userId: string, limit = 60) {
+  if (isDemoMode()) {
+    return demoPosts
+      .filter((p) => p.userId === userId)
+      .slice(0, limit)
+      .map((p) => ({
+        id: p.id,
+        imageUrl: p.imageUrl,
+        caption: p.caption,
+        status: p.status,
+        createdAt: p.createdAt,
+      }));
+  }
+
   const rows = await db
     .select({
       id: posts.id,
@@ -220,6 +303,19 @@ export async function getPostsByUser(userId: string, limit = 60) {
 }
 
 export async function getUserProfile(userId: string) {
+  if (isDemoMode()) {
+    const u = findDemoUser(userId);
+    if (!u) return null;
+    return {
+      id: u.id,
+      name: u.name,
+      handle: u.handle,
+      image: u.image,
+      bio: u.bio,
+      createdAt: u.createdAt,
+    };
+  }
+
   const [row] = await db
     .select({
       id: users.id,

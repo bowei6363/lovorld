@@ -4,7 +4,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { isDemoMode } from "@/lib/env";
 import { verifySession } from "@/server/auth/dal";
+import { demoLikes } from "@/server/demo/fixtures";
 import { db } from "@/server/db/client";
 import { posts } from "@/server/db/schema/posts";
 import { comments, likes, notifications } from "@/server/db/schema/social";
@@ -47,6 +49,22 @@ export async function toggleLike(
   const { postId } = postIdSchema.parse(input);
   requireRateLimit(`like:${userId}`, USER_WRITE_LIMIT);
 
+  if (isDemoMode()) {
+    // Toggle in the in-memory fixture so the optimistic UI looks right
+    // until the next page reload reseeds. Good enough for clicks-around.
+    const l = demoLikes[postId];
+    if (!l) return { liked: false, count: 0 };
+    if (l.selfLiked) {
+      l.selfLiked = false;
+      l.count = Math.max(0, l.count - 1);
+    } else {
+      l.selfLiked = true;
+      l.count += 1;
+    }
+    revalidatePath(`/p/${postId}`);
+    return { liked: l.selfLiked, count: l.count };
+  }
+
   const existing = await db
     .select({ postId: likes.postId })
     .from(likes)
@@ -79,6 +97,14 @@ export async function addComment(
   const { postId, body } = commentSchema.parse(input);
   requireRateLimit(`comment:${userId}`, USER_WRITE_LIMIT);
 
+  if (isDemoMode()) {
+    // Pretend it landed; the demo fixture list is read-only so the new
+    // comment won't show up on reload, but the toast and input clear.
+    void body;
+    revalidatePath(`/p/${postId}`);
+    return { commentId: `demo-comment-${Date.now()}` };
+  }
+
   const [row] = await db
     .insert(comments)
     .values({ postId, userId, body })
@@ -97,6 +123,11 @@ export async function addComment(
 
 export async function markAllNotificationsRead(): Promise<void> {
   const { userId } = await verifySession();
+  if (isDemoMode()) {
+    void userId;
+    revalidatePath("/notifications");
+    return;
+  }
   await db
     .update(notifications)
     .set({ readAt: new Date() })

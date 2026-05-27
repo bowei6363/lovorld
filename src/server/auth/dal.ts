@@ -14,10 +14,26 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 
 import { auth } from "@/auth";
+import { isDemoMode } from "@/lib/env";
+import { DEMO_SELF_ID, findDemoUser } from "@/server/demo/fixtures";
 import { db } from "@/server/db/client";
 import { users } from "@/server/db/schema/auth";
 
-export const verifySession = cache(async () => {
+type SessionPayload = {
+  userId: string;
+  session: { user: { id: string; name?: string | null; email?: string | null } };
+};
+
+export const verifySession = cache(async (): Promise<SessionPayload> => {
+  if (isDemoMode()) {
+    const u = findDemoUser(DEMO_SELF_ID);
+    return {
+      userId: DEMO_SELF_ID,
+      session: {
+        user: { id: DEMO_SELF_ID, name: u?.name ?? null, email: u?.email ?? null },
+      },
+    };
+  }
   const session = await auth();
   if (!session?.user?.id) {
     redirect("/sign-in");
@@ -25,9 +41,29 @@ export const verifySession = cache(async () => {
   return { userId: session.user.id, session };
 });
 
-export const getCurrentUser = cache(async () => {
-  const { userId } = await verifySession();
+type ThinUser = {
+  id: string;
+  name: string | null;
+  email: string;
+  image: string | null;
+  handle: string | null;
+  bio: string | null;
+};
 
+export const getCurrentUser = cache(async (): Promise<ThinUser | null> => {
+  if (isDemoMode()) {
+    const u = findDemoUser(DEMO_SELF_ID);
+    if (!u) return null;
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      image: u.image,
+      handle: u.handle,
+      bio: u.bio,
+    };
+  }
+  const { userId } = await verifySession();
   const rows = await db
     .select({
       id: users.id,
@@ -40,15 +76,24 @@ export const getCurrentUser = cache(async () => {
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
-
   return rows[0] ?? null;
 });
 
-/** Soft variant: does not redirect; returns null when unauthenticated. */
-export const tryGetCurrentUser = cache(async () => {
+export const tryGetCurrentUser = cache(async (): Promise<ThinUser | null> => {
+  if (isDemoMode()) {
+    const u = findDemoUser(DEMO_SELF_ID);
+    if (!u) return null;
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      image: u.image,
+      handle: u.handle,
+      bio: u.bio,
+    };
+  }
   const session = await auth();
   if (!session?.user?.id) return null;
-
   const rows = await db
     .select({
       id: users.id,
@@ -61,6 +106,5 @@ export const tryGetCurrentUser = cache(async () => {
     .from(users)
     .where(eq(users.id, session.user.id))
     .limit(1);
-
   return rows[0] ?? null;
 });

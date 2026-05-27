@@ -13,11 +13,12 @@ import "server-only";
 
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 
-import { getImageFeatureProvider } from "@/lib/ai";
+import { getImageFeatureProvider, type ImageInput } from "@/lib/ai";
+import { isLocalStorage } from "@/lib/env";
 import { db } from "@/server/db/client";
 import { users } from "@/server/db/schema/auth";
 import { posts } from "@/server/db/schema/posts";
-import { publicUrlFor } from "@/server/storage/r2";
+import { publicUrlFor, readObjectBytes } from "@/server/storage/r2";
 
 export async function analyzePost(postId: string): Promise<void> {
   const [post] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
@@ -32,10 +33,19 @@ export async function analyzePost(postId: string): Promise<void> {
 
   try {
     const provider = getImageFeatureProvider();
-    const feature = await provider.extract({
-      kind: "url",
-      url: publicUrlFor(post.r2Key),
-    });
+
+    // Local storage URLs point at localhost — DeepSeek can't fetch those,
+    // so we read bytes and inline them as a data URL instead. With R2 we
+    // hand DeepSeek the public URL and let them fetch it themselves.
+    let input: ImageInput;
+    if (isLocalStorage()) {
+      const { data, mimeType } = await readObjectBytes(post.r2Key);
+      input = { kind: "bytes", data, mimeType };
+    } else {
+      input = { kind: "url", url: publicUrlFor(post.r2Key) };
+    }
+
+    const feature = await provider.extract(input);
 
     await db
       .update(posts)

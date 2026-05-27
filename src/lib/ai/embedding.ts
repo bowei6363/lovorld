@@ -1,10 +1,12 @@
 /**
- * Text embedding. Voyage if VOYAGE_API_KEY is set (recommended for our use
- * case — multilingual, strong on aesthetic descriptors); OpenAI otherwise.
+ * Text embedding provider, OpenAI-compatible. Defaults to Alibaba DashScope
+ * (text-embedding-v3, dimensions=1024). Override with EMBEDDING_BASE_URL /
+ * EMBEDDING_API_KEY / EMBEDDING_MODEL.
  *
- * Both providers are configured to return 1024-d vectors so the result
- * fits the `vector(1024)` column in `post` and `user` tables. Switching
- * model dimensions later means a schema migration, so do it deliberately.
+ * MUST return 1024-d vectors — that's the dimensionality of the
+ * `vector(1024)` columns on `post.embedding` and `user.tasteEmbedding`.
+ * Switching dimensions is a schema migration, not a config change, so we
+ * check loudly here rather than failing later inside Drizzle.
  */
 import "server-only";
 
@@ -12,47 +14,14 @@ import { env } from "@/lib/env";
 
 const EMBED_DIMS = 1024;
 
-const VOYAGE_ENDPOINT = "https://api.voyageai.com/v1/embeddings";
-const OPENAI_ENDPOINT = "https://api.openai.com/v1/embeddings";
-
 export type EmbedResult = { vector: number[]; model: string };
 
-async function embedWithVoyage(text: string, apiKey: string): Promise<EmbedResult> {
-  const model = env.ai.voyage.model();
-  const res = await fetch(VOYAGE_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      input: [text],
-      input_type: "document",
-    }),
-  });
+export async function embedText(text: string): Promise<EmbedResult> {
+  const baseUrl = env.ai.embedding.baseUrl();
+  const apiKey = env.ai.embedding.apiKey();
+  const model = env.ai.embedding.model();
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `Voyage embedding failed (${res.status} ${res.statusText}): ${body.slice(0, 500)}`,
-    );
-  }
-
-  const json = (await res.json()) as { data?: { embedding?: number[] }[] };
-  const vector = json.data?.[0]?.embedding;
-  if (!vector || !Array.isArray(vector)) {
-    throw new Error("Voyage returned no embedding.");
-  }
-  if (vector.length !== EMBED_DIMS) {
-    throw new Error(`Voyage returned ${vector.length}-d vector; expected ${EMBED_DIMS}.`);
-  }
-  return { vector, model };
-}
-
-async function embedWithOpenAI(text: string, apiKey: string): Promise<EmbedResult> {
-  const model = env.ai.openai.embedModel();
-  const res = await fetch(OPENAI_ENDPOINT, {
+  const res = await fetch(`${baseUrl}/embeddings`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -61,37 +30,27 @@ async function embedWithOpenAI(text: string, apiKey: string): Promise<EmbedResul
     body: JSON.stringify({
       model,
       input: text,
-      // text-embedding-3-* supports `dimensions` to project down from 3072
       dimensions: EMBED_DIMS,
+      encoding_format: "float",
     }),
   });
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `OpenAI embedding failed (${res.status} ${res.statusText}): ${body.slice(0, 500)}`,
+      `Embedding provider failed (${res.status} ${res.statusText}): ${body.slice(0, 500)}`,
     );
   }
 
   const json = (await res.json()) as { data?: { embedding?: number[] }[] };
   const vector = json.data?.[0]?.embedding;
   if (!vector || !Array.isArray(vector)) {
-    throw new Error("OpenAI returned no embedding.");
+    throw new Error("Embedding provider returned no vector.");
   }
   if (vector.length !== EMBED_DIMS) {
-    throw new Error(`OpenAI returned ${vector.length}-d vector; expected ${EMBED_DIMS}.`);
+    throw new Error(
+      `Embedding provider returned ${vector.length}-d vector; lovorld's schema expects ${EMBED_DIMS}-d. Pick a different model or change the dimensions request.`,
+    );
   }
   return { vector, model };
-}
-
-export async function embedText(text: string): Promise<EmbedResult> {
-  const voyageKey = env.ai.voyage.apiKey();
-  if (voyageKey) return embedWithVoyage(text, voyageKey);
-
-  const openaiKey = env.ai.openai.apiKey();
-  if (openaiKey) return embedWithOpenAI(text, openaiKey);
-
-  throw new Error(
-    "No text-embedding provider configured. Set VOYAGE_API_KEY or OPENAI_API_KEY in .env.local.",
-  );
 }
