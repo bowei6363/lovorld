@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { CommentBox } from "@/components/comment-box";
 import { CommentList } from "@/components/comment-list";
 import { LikeButton } from "@/components/like-button";
+import { PostStatusWatcher } from "@/components/post-status-watcher";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { tryGetCurrentUser } from "@/server/auth/dal";
@@ -56,6 +57,8 @@ export default async function PostPage({ params }: Props) {
 
   return (
     <section className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
+      {/* No DOM, just polls for status changes and triggers router.refresh */}
+      <PostStatusWatcher postId={post.id} initialStatus={post.status} />
       <Card className="overflow-hidden">
         <div className="bg-muted relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}

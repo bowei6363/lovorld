@@ -7,6 +7,8 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { isDemoMode } from "@/lib/env";
+import { eq } from "drizzle-orm";
+
 import { verifySession } from "@/server/auth/dal";
 import { db } from "@/server/db/client";
 import { posts } from "@/server/db/schema/posts";
@@ -145,4 +147,20 @@ export async function finalizePostAndRedirect(
 ): Promise<never> {
   await finalizePost(input);
   redirect("/feed");
+}
+
+/**
+ * Lightweight status poll used by the client `PostStatusWatcher`. Returns
+ * just the status enum so the round-trip is small. Anyone can poll any
+ * post id — the value isn't sensitive (the feed already shows status).
+ */
+export async function checkPostStatus(
+  postId: string,
+): Promise<"pending_analysis" | "ready" | "failed" | null> {
+  const [row] = await db
+    .select({ status: posts.status })
+    .from(posts)
+    .where(eq(posts.id, postId))
+    .limit(1);
+  return row?.status ?? null;
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 
+import { PostStatusWatcher } from "@/components/post-status-watcher";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentUser } from "@/server/auth/dal";
@@ -33,8 +34,19 @@ export default async function ProfilePage() {
     .orderBy(desc(posts.createdAt))
     .limit(60);
 
+  // Any post still being analyzed gets a watcher; once it flips, the
+  // server component re-runs and the "AI 分析中…" label disappears.
+  const pending = myPosts.filter((p) => p.status === "pending_analysis");
+
   return (
     <section className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
+      {pending.map((p) => (
+        <PostStatusWatcher
+          key={p.id}
+          postId={p.id}
+          initialStatus={p.status as "pending_analysis"}
+        />
+      ))}
       <Card>
         <CardHeader className="flex flex-row items-center gap-4">
           <Avatar className="size-16">
