@@ -19,6 +19,7 @@ import { db } from "@/server/db/client";
 import { users } from "@/server/db/schema/auth";
 import { posts } from "@/server/db/schema/posts";
 import { publicUrlFor, readObjectBytes } from "@/server/storage/r2";
+import { recomputeUserClusters } from "@/server/taste";
 
 export async function analyzePost(postId: string): Promise<void> {
   const [post] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
@@ -61,11 +62,12 @@ export async function analyzePost(postId: string): Promise<void> {
       })
       .where(eq(posts.id, postId));
 
-    // Refresh the uploader's taste vector now that they have a new ready
-    // post. Cheap to do inline because the AVG is over a single user's
-    // posts and the failure case is "stale taste vector", not a crash.
+    // Refresh the uploader's taste vector + clusters now that they have a
+    // new ready post. Both are best-effort: the failure case is a stale
+    // taste model, not a crash.
     try {
       await recomputeUserTaste(post.userId);
+      await recomputeUserClusters(post.userId);
     } catch (recomputeErr) {
       console.error(`analyzePost: taste recompute failed for user ${post.userId}`, recomputeErr);
     }

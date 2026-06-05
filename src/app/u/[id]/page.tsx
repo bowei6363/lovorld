@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { FollowButton } from "@/components/follow-button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { tryGetCurrentUser } from "@/server/auth/dal";
 import { getPostsByUser, getUserProfile } from "@/server/feed/queries";
@@ -64,11 +65,16 @@ export default async function PublicProfilePage({ params }: Props) {
         </div>
 
         {viewer && !isSelf ? (
-          <FollowButton
-            targetUserId={id}
-            initialFollowing={follow2.viewerFollowing}
-            initialFollowers={follow2.followers}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <FollowButton
+              targetUserId={id}
+              initialFollowing={follow2.viewerFollowing}
+              initialFollowers={follow2.followers}
+            />
+            <Button render={<Link href={`/messages/${id}`} />} variant="outline" size="sm">
+              私信
+            </Button>
+          </div>
         ) : null}
       </header>
 

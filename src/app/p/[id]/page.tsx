@@ -6,6 +6,7 @@ import { CommentBox } from "@/components/comment-box";
 import { CommentList } from "@/components/comment-list";
 import { LikeButton } from "@/components/like-button";
 import { PostStatusWatcher } from "@/components/post-status-watcher";
+import { ReportButton } from "@/components/report-button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { tryGetCurrentUser } from "@/server/auth/dal";
@@ -145,7 +146,12 @@ export default async function PostPage({ params }: Props) {
             <p className="text-destructive text-sm">AI 分析失败。</p>
           ) : null}
 
-          <p className="text-muted-foreground text-xs">{post.createdAt.toLocaleString("zh-CN")}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-muted-foreground text-xs">
+              {post.createdAt.toLocaleString("zh-CN")}
+            </p>
+            {me && me.id !== post.author.id ? <ReportButton postId={post.id} /> : null}
+          </div>
         </CardContent>
       </Card>
 

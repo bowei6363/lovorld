@@ -9,10 +9,22 @@ import { verifySession } from "@/server/auth/dal";
 import { demoLikes } from "@/server/demo/fixtures";
 import { db } from "@/server/db/client";
 import { posts } from "@/server/db/schema/posts";
-import { bookmarks, comments, follows, likes, notifications } from "@/server/db/schema/social";
+import {
+  bookmarks,
+  comments,
+  follows,
+  likes,
+  notifications,
+  reports,
+} from "@/server/db/schema/social";
 import { USER_WRITE_LIMIT, requireRateLimit } from "@/server/limits";
 
 const postIdSchema = z.object({ postId: z.string().uuid() });
+const reportSchema = z.object({
+  postId: z.string().uuid(),
+  reason: z.enum(["spam", "nsfw", "copyright", "other"]),
+  note: z.string().trim().max(500).optional(),
+});
 const targetUserSchema = z.object({ targetUserId: z.string().uuid() });
 const commentSchema = z.object({
   postId: z.string().uuid(),
@@ -200,6 +212,22 @@ export async function toggleBookmark(
   revalidatePath(`/p/${postId}`);
   revalidatePath("/bookmarks");
   return { bookmarked };
+}
+
+export async function reportPost(input: z.input<typeof reportSchema>): Promise<{ ok: true }> {
+  const { userId } = await verifySession();
+  const { postId, reason, note } = reportSchema.parse(input);
+  requireRateLimit(`report:${userId}`, USER_WRITE_LIMIT);
+
+  if (isDemoMode()) return { ok: true };
+
+  // Unique (reporter, post) — re-reporting is a no-op.
+  await db
+    .insert(reports)
+    .values({ reporterId: userId, postId, reason, note })
+    .onConflictDoNothing();
+
+  return { ok: true };
 }
 
 export async function markAllNotificationsRead(): Promise<void> {

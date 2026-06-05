@@ -75,7 +75,9 @@ export default async function FeedPage() {
                     </span>
                   </Link>
                   {item.caption ? <p className="text-sm">{item.caption}</p> : null}
-                  {item.similarity !== null ? (
+                  {item.isExplore ? (
+                    <p className="text-muted-foreground text-xs">✨ 发现 · 换个口味看看</p>
+                  ) : item.similarity !== null ? (
                     <p className="text-muted-foreground text-xs">
                       口味契合度 {Math.round(item.similarity * 100)}%
                     </p>

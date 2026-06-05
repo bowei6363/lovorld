@@ -11,7 +11,7 @@
  */
 import "server-only";
 
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, ne, notInArray, sql } from "drizzle-orm";
 
 import { isDemoMode } from "@/lib/env";
 import {
@@ -26,6 +26,7 @@ import { db } from "@/server/db/client";
 import { users } from "@/server/db/schema/auth";
 import { posts } from "@/server/db/schema/posts";
 import { publicUrlFor } from "@/server/storage/r2";
+import { getUserClusterCentroids } from "@/server/taste";
 
 export type FeedItem = {
   id: string;
@@ -36,6 +37,8 @@ export type FeedItem = {
   height: number | null;
   createdAt: Date;
   similarity: number | null;
+  // true for the ~20% "explore" slots mixed in to break the filter bubble
+  isExplore: boolean;
   author: {
     id: string;
     name: string | null;
@@ -78,6 +81,7 @@ export async function getRecommendationFeed(
         height: post.height,
         createdAt: post.createdAt,
         similarity,
+        isExplore: false,
         author: {
           id: author.id,
           name: author.name,
@@ -89,43 +93,52 @@ export async function getRecommendationFeed(
     return { items, nextOffset };
   }
 
-  const [viewer] = await db
-    .select({ tasteEmbedding: users.tasteEmbedding })
-    .from(users)
-    .where(eq(users.id, viewerId))
-    .limit(1);
-
-  const taste = viewer?.tasteEmbedding ?? null;
+  void demoUsers;
+  void DEMO_SELF_ID;
 
   const baseFilter = and(eq(posts.status, "ready"), ne(posts.userId, viewerId));
 
-  if (taste && taste.length > 0) {
-    const literal = toVectorLiteral(taste);
-    const distance = sql<number>`${posts.embedding} <=> ${literal}::vector`;
+  // Ranking vectors: prefer the user's taste CLUSTERS (multi-taste), fall
+  // back to the single averaged taste vector, then to cold-start recency.
+  const centroids = await getUserClusterCentroids(viewerId);
+  let rankVectors = centroids;
+  if (rankVectors.length === 0) {
+    const [viewer] = await db
+      .select({ tasteEmbedding: users.tasteEmbedding })
+      .from(users)
+      .where(eq(users.id, viewerId))
+      .limit(1);
+    if (viewer?.tasteEmbedding && viewer.tasteEmbedding.length > 0) {
+      rankVectors = [viewer.tasteEmbedding];
+    }
+  }
 
+  const selectFields = {
+    id: posts.id,
+    r2Key: posts.r2Key,
+    caption: posts.caption,
+    description: posts.description,
+    width: posts.width,
+    height: posts.height,
+    createdAt: posts.createdAt,
+    authorId: users.id,
+    authorName: users.name,
+    authorHandle: users.handle,
+    authorImage: users.image,
+  };
+
+  // --- Cold start: recency only ---
+  if (rankVectors.length === 0) {
     const rows = await db
-      .select({
-        id: posts.id,
-        r2Key: posts.r2Key,
-        caption: posts.caption,
-        description: posts.description,
-        width: posts.width,
-        height: posts.height,
-        createdAt: posts.createdAt,
-        distance,
-        authorId: users.id,
-        authorName: users.name,
-        authorHandle: users.handle,
-        authorImage: users.image,
-      })
+      .select(selectFields)
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
       .where(baseFilter)
-      .orderBy(distance)
+      .orderBy(desc(posts.createdAt))
       .limit(limit + 1)
       .offset(offset);
 
-    const items = rows.slice(0, limit).map((r) => ({
+    const items: FeedItem[] = rows.slice(0, limit).map((r) => ({
       id: r.id,
       imageUrl: publicUrlFor(r.r2Key),
       caption: r.caption,
@@ -133,8 +146,8 @@ export async function getRecommendationFeed(
       width: r.width,
       height: r.height,
       createdAt: r.createdAt,
-      // Convert cosine distance (0=identical, 2=opposite) to 0–1 similarity
-      similarity: 1 - r.distance / 2,
+      similarity: null,
+      isExplore: false,
       author: {
         id: r.authorId,
         name: r.authorName,
@@ -142,41 +155,30 @@ export async function getRecommendationFeed(
         image: r.authorImage,
       },
     }));
-
-    return {
-      items,
-      nextOffset: rows.length > limit ? offset + limit : null,
-    };
+    return { items, nextOffset: rows.length > limit ? offset + limit : null };
   }
 
-  // Cold start: recency feed.
-  // demoUsers reference kept to satisfy the dead-code analyzer when
-  // demo mode is off — it short-circuits above.
-  void demoUsers;
-  void DEMO_SELF_ID;
+  // --- Similarity recall: distance to the NEAREST of the user's clusters ---
+  const distExprs = rankVectors.map(
+    (v) => sql`${posts.embedding} <=> ${toVectorLiteral(v)}::vector`,
+  );
+  const minDist =
+    distExprs.length === 1 ? distExprs[0] : sql`LEAST(${sql.join(distExprs, sql`, `)})`;
+  const distance = sql<number>`${minDist}`;
 
-  const rows = await db
-    .select({
-      id: posts.id,
-      r2Key: posts.r2Key,
-      caption: posts.caption,
-      description: posts.description,
-      width: posts.width,
-      height: posts.height,
-      createdAt: posts.createdAt,
-      authorId: users.id,
-      authorName: users.name,
-      authorHandle: users.handle,
-      authorImage: users.image,
-    })
+  const simTarget = Math.max(1, Math.ceil(limit * 0.8));
+  const exploreTarget = Math.max(0, limit - simTarget);
+
+  const simRows = await db
+    .select({ ...selectFields, distance })
     .from(posts)
     .innerJoin(users, eq(posts.userId, users.id))
     .where(baseFilter)
-    .orderBy(desc(posts.createdAt))
-    .limit(limit + 1)
+    .orderBy(distance)
+    .limit(simTarget + 1)
     .offset(offset);
 
-  const items = rows.slice(0, limit).map((r) => ({
+  const simItems: FeedItem[] = simRows.slice(0, simTarget).map((r) => ({
     id: r.id,
     imageUrl: publicUrlFor(r.r2Key),
     caption: r.caption,
@@ -184,7 +186,8 @@ export async function getRecommendationFeed(
     width: r.width,
     height: r.height,
     createdAt: r.createdAt,
-    similarity: null,
+    similarity: 1 - r.distance / 2,
+    isExplore: false,
     author: {
       id: r.authorId,
       name: r.authorName,
@@ -193,10 +196,55 @@ export async function getRecommendationFeed(
     },
   }));
 
-  return {
-    items,
-    nextOffset: rows.length > limit ? offset + limit : null,
-  };
+  // --- Explore: recent posts NOT in the similarity set, to break the bubble ---
+  let exploreItems: FeedItem[] = [];
+  if (exploreTarget > 0) {
+    const excludeIds = simItems.map((s) => s.id);
+    const exploreRows = await db
+      .select(selectFields)
+      .from(posts)
+      .innerJoin(users, eq(posts.userId, users.id))
+      .where(excludeIds.length > 0 ? and(baseFilter, notInArray(posts.id, excludeIds)) : baseFilter)
+      .orderBy(desc(posts.createdAt))
+      .limit(exploreTarget);
+
+    exploreItems = exploreRows.map((r) => ({
+      id: r.id,
+      imageUrl: publicUrlFor(r.r2Key),
+      caption: r.caption,
+      description: r.description,
+      width: r.width,
+      height: r.height,
+      createdAt: r.createdAt,
+      similarity: null,
+      isExplore: true,
+      author: {
+        id: r.authorId,
+        name: r.authorName,
+        handle: r.authorHandle,
+        image: r.authorImage,
+      },
+    }));
+  }
+
+  // Interleave: every 5th slot is an explore item.
+  const items: FeedItem[] = [];
+  let si = 0;
+  let ei = 0;
+  let slot = 0;
+  while (si < simItems.length || ei < exploreItems.length) {
+    if (slot % 5 === 4 && ei < exploreItems.length) {
+      items.push(exploreItems[ei++]);
+    } else if (si < simItems.length) {
+      items.push(simItems[si++]);
+    } else if (ei < exploreItems.length) {
+      items.push(exploreItems[ei++]);
+    }
+    slot++;
+  }
+
+  const nextOffset = simRows.length > simTarget ? offset + simTarget : null;
+  return { items, nextOffset };
 }
 
 export async function getPostById(postId: string) {

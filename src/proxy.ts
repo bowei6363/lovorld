@@ -20,6 +20,7 @@ const PROTECTED_PREFIXES = [
   "/notifications",
   "/bookmarks",
   "/onboarding",
+  "/messages",
 ];
 
 const DEMO_MODE = process.env.LOVORLD_DEMO_MODE === "1";

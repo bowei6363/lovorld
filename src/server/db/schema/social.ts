@@ -10,7 +10,17 @@
  * (`readAt`) rather than deleted so analytics can still see them.
  */
 import { sql } from "drizzle-orm";
-import { index, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  vector,
+} from "drizzle-orm/pg-core";
 
 import { users } from "./auth";
 import { posts } from "./posts";
@@ -120,8 +130,80 @@ export const bookmarks = pgTable(
   ],
 );
 
+/**
+ * Direct messages. Flat table; a "conversation" is just all rows between two
+ * user ids in either direction. Fine until volume demands a conversations
+ * table with a denormalized last-message pointer.
+ */
+export const messages = pgTable(
+  "message",
+  {
+    id: text("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    senderId: text("senderId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    recipientId: text("recipientId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    readAt: timestamp("readAt", { mode: "date" }),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("message_pair_idx").on(t.senderId, t.recipientId, t.createdAt.desc()),
+    index("message_recipient_unread_idx").on(t.recipientId, t.readAt),
+  ],
+);
+
+/**
+ * Per-user aesthetic clusters. Instead of one averaged taste vector (which
+ * collapses a user with two distinct tastes into a meaningless midpoint), we
+ * k-means their post embeddings into up to 3 centroids and recall from each.
+ * `size` is how many posts fed the centroid — used to weight recall.
+ */
+export const tasteClusters = pgTable(
+  "taste_cluster",
+  {
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    idx: integer("idx").notNull(),
+    centroid: vector("centroid", { dimensions: 1024 }).notNull(),
+    size: integer("size").notNull(),
+    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.idx] })],
+);
+
+export const reportReason = pgEnum("report_reason", ["spam", "nsfw", "copyright", "other"]);
+
+/** Content reports. Backend is intentionally minimal — just capture signal. */
+export const reports = pgTable(
+  "report",
+  {
+    id: text("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    reporterId: text("reporterId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    postId: text("postId")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    reason: reportReason("reason").notNull(),
+    note: text("note"),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("report_reporter_post_unique").on(t.reporterId, t.postId)],
+);
+
 export type Like = typeof likes.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Follow = typeof follows.$inferSelect;
 export type Bookmark = typeof bookmarks.$inferSelect;
+export type Message = typeof messages.$inferSelect;
+export type TasteCluster = typeof tasteClusters.$inferSelect;
+export type Report = typeof reports.$inferSelect;
