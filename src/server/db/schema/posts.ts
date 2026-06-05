@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -46,6 +47,11 @@ export const posts = pgTable(
 
     // Populated by the AI pipeline in milestone 4.
     description: text("description"),
+    // AI-generated tags + dominant color palette. Surfaced on the post
+    // detail page as chips + a swatch strip. jsonb keeps it simple to read
+    // back as a typed string[] without a join table.
+    tags: jsonb("tags").$type<string[]>(),
+    palette: jsonb("palette").$type<string[]>(),
     embedding: vector("embedding", { dimensions: 1024 }),
     visionModel: text("visionModel"),
     embeddingModel: text("embeddingModel"),

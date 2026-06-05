@@ -13,9 +13,11 @@ import { signIn } from "@/auth";
  * UUID and tripped JWTSessionError on every request in production.
  */
 export async function signInAsGuest(callbackUrl?: string): Promise<never> {
+  // New guests land on onboarding first (sets name/emoji + seeds a taste
+  // vector for instant matches). callbackUrl, if present, still wins.
   await signIn("guest", {
     redirect: true,
-    redirectTo: callbackUrl ?? "/feed",
+    redirectTo: callbackUrl ?? "/onboarding",
   });
   // `signIn(..., { redirect: true })` throws a NEXT_REDIRECT — control
   // never reaches this point. Returning `never` keeps callers honest.

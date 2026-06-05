@@ -51,6 +51,8 @@ export async function analyzePost(postId: string): Promise<void> {
       .update(posts)
       .set({
         description: feature.description.summary,
+        tags: feature.description.tags,
+        palette: feature.description.palette ?? null,
         embedding: feature.embedding,
         visionModel: feature.visionModel,
         embeddingModel: feature.embeddingModel,

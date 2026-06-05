@@ -9,6 +9,7 @@
 import { sql } from "drizzle-orm";
 import {
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -31,6 +32,16 @@ export const users = pgTable(
     // Lovorld profile extensions
     handle: text("handle"),
     bio: text("bio"),
+    // Emoji used as a lightweight avatar (chosen during onboarding). The
+    // OAuth `image` column stays for real avatars later.
+    avatarEmoji: text("avatarEmoji"),
+    // Aesthetic keywords picked during onboarding (e.g. ["极简","暗调"]).
+    // Also seeded into the initial taste vector so cold-start users get
+    // meaningful matches before uploading anything.
+    tasteKeywords: jsonb("tasteKeywords").$type<string[]>(),
+    // Null until the user finishes the 30-second onboarding flow. The DAL
+    // redirects unfinished users to /onboarding.
+    onboardedAt: timestamp("onboardedAt", { mode: "date" }),
 
     // Aggregate "taste vector" — the average embedding of this user's
     // ready posts. Recomputed by analyzePost when each new post finishes

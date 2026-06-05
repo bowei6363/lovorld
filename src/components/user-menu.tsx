@@ -47,6 +47,7 @@ export function UserMenu({ user }: { user: PublicProfile }) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/profile" />}>我的主页</DropdownMenuItem>
+        <DropdownMenuItem render={<Link href="/bookmarks" />}>我的收藏</DropdownMenuItem>
         <DropdownMenuItem render={<Link href="/feed" />}>信息流</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled={pending} onClick={() => startTransition(() => signOutAction())}>

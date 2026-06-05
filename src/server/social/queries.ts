@@ -17,7 +17,7 @@ import {
 import { db } from "@/server/db/client";
 import { users } from "@/server/db/schema/auth";
 import { posts } from "@/server/db/schema/posts";
-import { comments, likes, notifications } from "@/server/db/schema/social";
+import { bookmarks, comments, follows, likes, notifications } from "@/server/db/schema/social";
 import { publicUrlFor } from "@/server/storage/r2";
 
 export async function getPostSocialState(postId: string, viewerId: string) {
@@ -82,6 +82,75 @@ export async function getCommentsForPost(postId: string) {
   return rows;
 }
 
+export async function getFollowSummary(
+  targetUserId: string,
+  viewerId: string | null,
+): Promise<{ followers: number; following: number; viewerFollowing: boolean }> {
+  if (isDemoMode()) {
+    return { followers: 0, following: 0, viewerFollowing: false };
+  }
+
+  const [followerRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(follows)
+    .where(eq(follows.followingId, targetUserId));
+  const [followingRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(follows)
+    .where(eq(follows.followerId, targetUserId));
+
+  let viewerFollowing = false;
+  if (viewerId && viewerId !== targetUserId) {
+    const hit = await db
+      .select({ followerId: follows.followerId })
+      .from(follows)
+      .where(and(eq(follows.followerId, viewerId), eq(follows.followingId, targetUserId)))
+      .limit(1);
+    viewerFollowing = hit.length > 0;
+  }
+
+  return {
+    followers: Number(followerRow?.count ?? 0),
+    following: Number(followingRow?.count ?? 0),
+    viewerFollowing,
+  };
+}
+
+export async function getPostBookmarkState(postId: string, viewerId: string): Promise<boolean> {
+  if (isDemoMode()) return false;
+  const hit = await db
+    .select({ postId: bookmarks.postId })
+    .from(bookmarks)
+    .where(and(eq(bookmarks.userId, viewerId), eq(bookmarks.postId, postId)))
+    .limit(1);
+  return hit.length > 0;
+}
+
+export async function getBookmarkedPosts(userId: string, limit = 60) {
+  if (isDemoMode()) return [];
+  const rows = await db
+    .select({
+      id: posts.id,
+      r2Key: posts.r2Key,
+      caption: posts.caption,
+      status: posts.status,
+      createdAt: bookmarks.createdAt,
+    })
+    .from(bookmarks)
+    .innerJoin(posts, eq(bookmarks.postId, posts.id))
+    .where(eq(bookmarks.userId, userId))
+    .orderBy(desc(bookmarks.createdAt))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    imageUrl: publicUrlFor(r.r2Key),
+    caption: r.caption,
+    status: r.status,
+    createdAt: r.createdAt,
+  }));
+}
+
 export async function countUnreadNotifications(userId: string): Promise<number> {
   if (isDemoMode()) {
     void userId;
@@ -97,7 +166,7 @@ export async function countUnreadNotifications(userId: string): Promise<number> 
 
 export type NotificationItem = {
   id: string;
-  type: "post_like" | "post_comment";
+  type: "post_like" | "post_comment" | "new_follower";
   createdAt: Date;
   readAt: Date | null;
   actor: {

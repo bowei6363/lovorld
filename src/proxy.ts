@@ -13,7 +13,14 @@ import authConfig from "./auth.config";
 
 const { auth: proxy } = NextAuth(authConfig);
 
-const PROTECTED_PREFIXES = ["/profile", "/upload", "/feed", "/notifications"];
+const PROTECTED_PREFIXES = [
+  "/profile",
+  "/upload",
+  "/feed",
+  "/notifications",
+  "/bookmarks",
+  "/onboarding",
+];
 
 const DEMO_MODE = process.env.LOVORLD_DEMO_MODE === "1";
 

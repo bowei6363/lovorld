@@ -47,7 +47,11 @@ export const comments = pgTable(
   (t) => [index("comment_postId_createdAt_idx").on(t.postId, t.createdAt.desc())],
 );
 
-export const notificationType = pgEnum("notification_type", ["post_like", "post_comment"]);
+export const notificationType = pgEnum("notification_type", [
+  "post_like",
+  "post_comment",
+  "new_follower",
+]);
 
 export const notifications = pgTable(
   "notification",
@@ -74,6 +78,50 @@ export const notifications = pgTable(
   ],
 );
 
+/**
+ * Follow graph. (followerId follows followingId.) One row per directed edge.
+ * Self-follows are blocked in the action layer, not the schema.
+ */
+export const follows = pgTable(
+  "follow",
+  {
+    followerId: text("followerId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    followingId: text("followingId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.followerId, t.followingId] }),
+    index("follow_following_idx").on(t.followingId),
+  ],
+);
+
+/**
+ * Bookmarks = personal saves. Distinct from likes (which are author-facing
+ * appreciation). A user saves a post for their own collection.
+ */
+export const bookmarks = pgTable(
+  "bookmark",
+  {
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    postId: text("postId")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.postId] }),
+    index("bookmark_user_createdAt_idx").on(t.userId, t.createdAt.desc()),
+  ],
+);
+
 export type Like = typeof likes.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type Follow = typeof follows.$inferSelect;
+export type Bookmark = typeof bookmarks.$inferSelect;

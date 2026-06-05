@@ -9,10 +9,11 @@ import { verifySession } from "@/server/auth/dal";
 import { demoLikes } from "@/server/demo/fixtures";
 import { db } from "@/server/db/client";
 import { posts } from "@/server/db/schema/posts";
-import { comments, likes, notifications } from "@/server/db/schema/social";
+import { bookmarks, comments, follows, likes, notifications } from "@/server/db/schema/social";
 import { USER_WRITE_LIMIT, requireRateLimit } from "@/server/limits";
 
 const postIdSchema = z.object({ postId: z.string().uuid() });
+const targetUserSchema = z.object({ targetUserId: z.string().uuid() });
 const commentSchema = z.object({
   postId: z.string().uuid(),
   body: z.string().trim().min(1).max(2000),
@@ -119,6 +120,86 @@ export async function addComment(
 
   revalidatePath(`/p/${postId}`);
   return { commentId: row.id };
+}
+
+export async function toggleFollow(
+  input: z.input<typeof targetUserSchema>,
+): Promise<{ following: boolean; followerCount: number }> {
+  const { userId } = await verifySession();
+  const { targetUserId } = targetUserSchema.parse(input);
+  if (targetUserId === userId) {
+    throw new Error("不能关注自己。");
+  }
+  requireRateLimit(`follow:${userId}`, USER_WRITE_LIMIT);
+
+  if (isDemoMode()) {
+    revalidatePath(`/u/${targetUserId}`);
+    return { following: true, followerCount: 1 };
+  }
+
+  const existing = await db
+    .select({ followerId: follows.followerId })
+    .from(follows)
+    .where(and(eq(follows.followerId, userId), eq(follows.followingId, targetUserId)))
+    .limit(1);
+
+  let following: boolean;
+  if (existing.length > 0) {
+    await db
+      .delete(follows)
+      .where(and(eq(follows.followerId, userId), eq(follows.followingId, targetUserId)));
+    following = false;
+  } else {
+    await db.insert(follows).values({ followerId: userId, followingId: targetUserId });
+    following = true;
+    await db.insert(notifications).values({
+      recipientId: targetUserId,
+      actorId: userId,
+      type: "new_follower",
+    });
+  }
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(follows)
+    .where(eq(follows.followingId, targetUserId));
+
+  revalidatePath(`/u/${targetUserId}`);
+  return { following, followerCount: Number(count) };
+}
+
+export async function toggleBookmark(
+  input: z.input<typeof postIdSchema>,
+): Promise<{ bookmarked: boolean }> {
+  const { userId } = await verifySession();
+  const { postId } = postIdSchema.parse(input);
+  requireRateLimit(`bookmark:${userId}`, USER_WRITE_LIMIT);
+
+  if (isDemoMode()) {
+    revalidatePath(`/p/${postId}`);
+    return { bookmarked: true };
+  }
+
+  const existing = await db
+    .select({ postId: bookmarks.postId })
+    .from(bookmarks)
+    .where(and(eq(bookmarks.userId, userId), eq(bookmarks.postId, postId)))
+    .limit(1);
+
+  let bookmarked: boolean;
+  if (existing.length > 0) {
+    await db
+      .delete(bookmarks)
+      .where(and(eq(bookmarks.userId, userId), eq(bookmarks.postId, postId)));
+    bookmarked = false;
+  } else {
+    await db.insert(bookmarks).values({ userId, postId });
+    bookmarked = true;
+  }
+
+  revalidatePath(`/p/${postId}`);
+  revalidatePath("/bookmarks");
+  return { bookmarked };
 }
 
 export async function markAllNotificationsRead(): Promise<void> {

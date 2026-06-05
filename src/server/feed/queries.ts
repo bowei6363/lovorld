@@ -210,6 +210,8 @@ export async function getPostById(postId: string) {
       imageUrl: post.imageUrl,
       caption: post.caption,
       description: post.description,
+      tags: [] as string[],
+      palette: [] as string[],
       width: post.width,
       height: post.height,
       status: post.status,
@@ -219,6 +221,7 @@ export async function getPostById(postId: string) {
         name: author.name,
         handle: author.handle,
         image: author.image,
+        avatarEmoji: null as string | null,
         bio: author.bio,
       },
     };
@@ -230,6 +233,8 @@ export async function getPostById(postId: string) {
       r2Key: posts.r2Key,
       caption: posts.caption,
       description: posts.description,
+      tags: posts.tags,
+      palette: posts.palette,
       width: posts.width,
       height: posts.height,
       status: posts.status,
@@ -238,6 +243,7 @@ export async function getPostById(postId: string) {
       authorName: users.name,
       authorHandle: users.handle,
       authorImage: users.image,
+      authorEmoji: users.avatarEmoji,
       authorBio: users.bio,
     })
     .from(posts)
@@ -252,6 +258,8 @@ export async function getPostById(postId: string) {
     imageUrl: publicUrlFor(row.r2Key),
     caption: row.caption,
     description: row.description,
+    tags: row.tags ?? [],
+    palette: row.palette ?? [],
     width: row.width,
     height: row.height,
     status: row.status,
@@ -261,6 +269,7 @@ export async function getPostById(postId: string) {
       name: row.authorName,
       handle: row.authorHandle,
       image: row.authorImage,
+      avatarEmoji: row.authorEmoji,
       bio: row.authorBio,
     },
   };
@@ -311,6 +320,7 @@ export async function getUserProfile(userId: string) {
       name: u.name,
       handle: u.handle,
       image: u.image,
+      avatarEmoji: null as string | null,
       bio: u.bio,
       createdAt: u.createdAt,
     };
@@ -322,6 +332,7 @@ export async function getUserProfile(userId: string) {
       name: users.name,
       handle: users.handle,
       image: users.image,
+      avatarEmoji: users.avatarEmoji,
       bio: users.bio,
       createdAt: users.createdAt,
     })
@@ -329,4 +340,86 @@ export async function getUserProfile(userId: string) {
     .where(eq(users.id, userId))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * "品味相近的分享" — given a post, find OTHER users' ready posts whose
+ * embedding is closest to this one. Powers the post-detail recommendation
+ * strip. Excludes the source post and its author so the user discovers new
+ * people, not their own work.
+ */
+export type SimilarPost = {
+  id: string;
+  imageUrl: string;
+  caption: string | null;
+  similarity: number;
+  author: {
+    id: string;
+    name: string | null;
+    handle: string | null;
+    avatarEmoji: string | null;
+  };
+};
+
+export async function getSimilarPostsToPost(postId: string, limit = 6): Promise<SimilarPost[]> {
+  if (isDemoMode()) {
+    return demoPosts
+      .filter((p) => p.id !== postId)
+      .slice(0, limit)
+      .map((p) => {
+        const author = findDemoUser(p.userId)!;
+        return {
+          id: p.id,
+          imageUrl: p.imageUrl,
+          caption: p.caption,
+          similarity: demoSimilarity[p.id] ?? 0.8,
+          author: {
+            id: author.id,
+            name: author.name,
+            handle: author.handle,
+            avatarEmoji: null,
+          },
+        };
+      });
+  }
+
+  const [src] = await db
+    .select({ embedding: posts.embedding, userId: posts.userId })
+    .from(posts)
+    .where(eq(posts.id, postId))
+    .limit(1);
+  if (!src?.embedding) return [];
+
+  const literal = `[${src.embedding.join(",")}]`;
+  const distance = sql<number>`${posts.embedding} <=> ${literal}::vector`;
+
+  const rows = await db
+    .select({
+      id: posts.id,
+      r2Key: posts.r2Key,
+      caption: posts.caption,
+      distance,
+      authorId: users.id,
+      authorName: users.name,
+      authorHandle: users.handle,
+      authorEmoji: users.avatarEmoji,
+    })
+    .from(posts)
+    .innerJoin(users, eq(posts.userId, users.id))
+    .where(and(eq(posts.status, "ready"), ne(posts.id, postId), ne(posts.userId, src.userId)))
+    .orderBy(distance)
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    imageUrl: publicUrlFor(r.r2Key),
+    caption: r.caption,
+    similarity: 1 - r.distance / 2,
+    author: {
+      id: r.authorId,
+      name: r.authorName,
+      handle: r.authorHandle,
+      avatarEmoji: r.authorEmoji,
+    },
+  }));
 }

@@ -18,7 +18,11 @@ function initialsOf(name: string | null, fallback: string) {
     .join("");
 }
 
-function describe(n: { type: "post_like" | "post_comment"; commentBody: string | null }): string {
+function describe(n: {
+  type: "post_like" | "post_comment" | "new_follower";
+  commentBody: string | null;
+}): string {
+  if (n.type === "new_follower") return "关注了你";
   if (n.type === "post_like") return "点赞了你的图片";
   if (n.commentBody) {
     const trimmed = n.commentBody.length > 80 ? `${n.commentBody.slice(0, 80)}…` : n.commentBody;
